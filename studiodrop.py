@@ -357,7 +357,7 @@ def integration_set(on):
         return
     sendto, startup = win_paths()
     if on:
-        for path, tail in ((sendto, "send %*"), (startup, "--no-browser")):
+        for path, tail in ((sendto, "send %*"), (startup, "--background")):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(("@echo off\r\nchcp 65001>nul\r\nstart \"\" /min %s %s\r\n" % (launch_cmd(), tail)).encode("utf-8"))
     else:
@@ -600,7 +600,7 @@ class Handler(BaseHTTPRequestHandler):
                                   "sender": sender, "files": files, "state": "pending", "got": 0, "cur": "",
                                   "t": time.time()})
                 if time.time() - LAST_POLL[0] > 6 and not NO_BROWSER[0]:
-                    webbrowser.open("http://127.0.0.1:%d/%s/" % (PORT, TOKEN))
+                    spawn_self("open")  # покажем окно с «Принять?»
                 return self.send_json({"ok": True})
             if self.command == "POST" and act == "decline" and len(parts) == 4:
                 o = OFFERS.get(parts[3])
@@ -938,6 +938,7 @@ textarea{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px
   <div class="card">
     <h2>Настройки</h2>
     <label id="integw" hidden style="display:block;margin-bottom:12px"><input type="checkbox" id="integ"> Пункт «Отправить → StudioDrop» и автозапуск с Windows</label>
+    <div class="mut" style="margin:0 0 12px">Закрытие окна не останавливает приём файлов (на Windows программа остаётся работать в фоне). Полностью остановить — кнопка ниже.</div>
     <button class="del" id="quit">Выйти из StudioDrop</button>
   </div>
 </div>
@@ -1175,6 +1176,54 @@ loadFiles(); pollDevices(); setInterval(pollDevices, 1500);
 # ───────────────────────────── запуск ─────────────────────────────
 
 
+def spawn_self(*args):
+    """Запускает ещё одну копию этой программы отдельным процессом (без привязки к текущему)."""
+    kw = {}
+    if IS_WIN:
+        kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    argv = [sys.executable] + ([] if FROZEN else [os.path.abspath(__file__)]) + list(args)
+    subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, **kw)
+
+
+def run_window(url, on_ready=None):
+    """Показывает интерфейс в собственном окне. Если окно создать нельзя — открывает браузер."""
+    try:
+        import webview
+    except Exception:
+        webbrowser.open(url)
+        return False
+    try:
+        try:
+            webview.settings["ALLOW_DOWNLOADS"] = True
+        except Exception:
+            pass
+        win = webview.create_window("StudioDrop", url, width=520, height=880, min_size=(380, 560))
+        if on_ready:
+            webview.start(on_ready, win)
+        else:
+            webview.start()
+        return True
+    except Exception as e:
+        print("Окно не открылось, открываю браузер:", e)
+        webbrowser.open(url)
+        return False
+
+
+def window_selftest(window):
+    """Для автотестов: ждёт загрузки страницы в окне, пишет результат в файл и закрывает окно."""
+    try:
+        window.events.loaded.wait(40)
+        res = window.evaluate_js('document.title + "|" + (document.getElementById("qr") ? "qr" : "noqr")')
+    except Exception as e:
+        res = "ERR %s" % e
+    try:
+        (FOLDER / ".window_ok").write_text(str(res), encoding="utf-8")
+    finally:
+        window.destroy()
+
+
 def find_running():
     """Ищет уже запущенный StudioDrop на этом ПК. Возвращает порт или None."""
     for port in range(8765, 8785):
@@ -1194,14 +1243,7 @@ def cmd_send(paths):
         return
     port = find_running()
     if port is None:
-        kw = {}
-        if sys.platform.startswith("win"):
-            kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | NEW_PROCESS_GROUP
-        else:
-            kw["start_new_session"] = True
-        argv = [sys.executable] + ([] if FROZEN else [os.path.abspath(__file__)]) + ["--no-browser"]
-        subprocess.Popen(argv,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, **kw)
+        spawn_self("--background")
         for _ in range(40):
             time.sleep(0.25)
             port = find_running()
@@ -1220,24 +1262,30 @@ def cmd_send(paths):
         pass
     print(url)
     if not os.environ.get("STUDIODROP_NO_OPEN"):
-        webbrowser.open(url)
+        run_window(url)
 
 
 def main():
     global FOLDER, TOKEN, PORT, LAN_IP, OUT
     if len(sys.argv) > 1 and sys.argv[1] == "send":
         return cmd_send(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] == "open":
+        port = find_running()
+        if port:
+            tok = (Path.home() / "StudioDrop" / ".studiodrop_token").read_text().strip()
+            run_window("http://127.0.0.1:%d/%s/" % (port, tok))
+        return
     if len(sys.argv) > 1 and sys.argv[1] in ("install", "uninstall"):
         integration_set(sys.argv[1] == "install")
         msgbox("Готово. Пункт «Отправить → StudioDrop» и автозапуск %s." % ("включены" if sys.argv[1] == "install" else "выключены"))
         return
     if find_running() and "--force" not in sys.argv:
-        # уже запущен: просто открываем страницу
+        # уже запущен: просто показываем окно
         port = find_running()
         try:
             tok = (Path.home() / "StudioDrop" / ".studiodrop_token").read_text().strip()
-            if "--no-browser" not in sys.argv:
-                webbrowser.open("http://127.0.0.1:%d/%s/" % (port, tok))
+            if "--no-browser" not in sys.argv and "--background" not in sys.argv:
+                run_window("http://127.0.0.1:%d/%s/" % (port, tok))
         except OSError:
             pass
         print("StudioDrop уже запущен.")
@@ -1245,7 +1293,9 @@ def main():
     ap = argparse.ArgumentParser(description="StudioDrop — обмен файлами по Wi-Fi")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--dir", help="папка для файлов (по умолчанию ~/StudioDrop)")
-    ap.add_argument("--no-browser", action="store_true", help="не открывать браузер")
+    ap.add_argument("--no-browser", action="store_true", help="ничего не открывать (для тестов)")
+    ap.add_argument("--background", action="store_true", help="запуск без окна (автозапуск); окно покажется при входящем файле")
+    ap.add_argument("--window-test", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
     args, _ = ap.parse_known_args()  # macOS может добавить свои аргументы (-psn_…)
 
@@ -1298,12 +1348,21 @@ def main():
     print("=" * 56)
     if LAN_IP.startswith("127."):
         print(" ! Не найдена сеть Wi-Fi/Ethernet — подключитесь к сети.")
-    if not args.no_browser:
-        threading.Timer(0.6, lambda: webbrowser.open(local)).start()
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nОстановлено.")
+    window_mode = args.window_test or not (args.no_browser or args.background)
+    if not window_mode:
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nОстановлено.")
+        return
+    srv = threading.Thread(target=server.serve_forever, daemon=True)
+    srv.start()
+    shown = run_window(local, window_selftest if args.window_test else None)
+    if args.window_test:
+        os._exit(0)
+    if not shown or (IS_WIN and integration_on()):
+        srv.join()  # окно закрыто, но приём файлов продолжается в фоне (выйти можно кнопкой в настройках)
+    os._exit(0)
 
 
 if __name__ == "__main__":
