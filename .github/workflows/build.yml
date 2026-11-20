@@ -1,0 +1,99 @@
+name: Build StudioDrop
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # 1) Проверка исходников на всех системах
+  source-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Сквозной тест (две копии, передача файлов)
+        run: python tests/smoke.py python studiodrop.py
+
+  # 2) Windows: собрать exe -> проверить САМ exe -> проверить из папки с русским/пробелами
+  windows:
+    needs: source-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --onefile --noconsole --name StudioDrop --icon icon.ico studiodrop.py
+      - name: Тест готового StudioDrop.exe
+        run: python tests/smoke.py dist/StudioDrop.exe
+      - name: Тест exe из папки с кириллицей и пробелом
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "dist\Мои программы" | Out-Null
+          Copy-Item dist\StudioDrop.exe "dist\Мои программы\StudioDrop.exe"
+          python tests/smoke.py "dist\Мои программы\StudioDrop.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudioDrop-Windows
+          path: dist/StudioDrop.exe
+
+  # 3) Mac: по сборке на каждую архитектуру; проверяем .app и .app внутри .dmg
+  mac:
+    needs: source-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, label: AppleSilicon }
+          - { os: macos-15-intel, label: Intel }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --windowed --name StudioDrop --icon icon.icns --osx-bundle-identifier com.studiodrop.app studiodrop.py
+      - name: Подпись для себя и проверка архитектуры
+        run: |
+          codesign --force --deep --sign - dist/StudioDrop.app
+          codesign --verify --deep --strict dist/StudioDrop.app
+          lipo -archs dist/StudioDrop.app/Contents/MacOS/StudioDrop
+      - name: Тест готового .app
+        run: python tests/smoke.py dist/StudioDrop.app/Contents/MacOS/StudioDrop
+      - name: Собрать .dmg
+        run: |
+          mkdir dmgroot
+          cp -R dist/StudioDrop.app dmgroot/
+          ln -s /Applications dmgroot/Applications
+          hdiutil create -volname StudioDrop -srcfolder dmgroot -ov -format UDZO StudioDrop-${{ matrix.label }}.dmg
+      - name: Тест приложения ИЗ .dmg (ровно то, что получит пользователь)
+        run: |
+          hdiutil attach -nobrowse -mountpoint /tmp/sdmount StudioDrop-${{ matrix.label }}.dmg
+          python tests/smoke.py /tmp/sdmount/StudioDrop.app/Contents/MacOS/StudioDrop
+          hdiutil detach /tmp/sdmount
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudioDrop-Mac-${{ matrix.label }}
+          path: StudioDrop-${{ matrix.label }}.dmg
+
+  # 4) Публикация на странице Releases (только по тегу v*)
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
