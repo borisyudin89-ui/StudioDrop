@@ -10,6 +10,11 @@
 import hashlib, json, os, shutil, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
 
+for _st in (sys.stdout, sys.stderr):  # консоль Windows по умолчанию не умеет русские буквы
+    try:
+        _st.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 CMD = sys.argv[1:]
 if not CMD:
     sys.exit(__doc__)
