@@ -257,8 +257,12 @@ def main():
                 print("\n===== лог %s =====" % i.name)
                 print((root / (i.name + ".log")).read_text(errors="replace")[-1500:])
         shutil.rmtree(root, ignore_errors=True)
-    print("\nИТОГО: %d проверок, провалено %d" % (len(results), results.count(False)))
-    sys.exit(0 if all(results) else 1)
 
 
 main()
+print("\nИТОГО: %d проверок, провалено %d" % (len(results), results.count(False)))
+MIN_CHECKS = 30  # если проверок сильно меньше — тест оборвался раньше времени
+if not results or not all(results) or len(results) < MIN_CHECKS:
+    print("ТЕСТ НЕ ПРОЙДЕН" + ("" if len(results) >= MIN_CHECKS else " (выполнено слишком мало проверок)"))
+    sys.exit(1)
+print("ТЕСТ ПРОЙДЕН")

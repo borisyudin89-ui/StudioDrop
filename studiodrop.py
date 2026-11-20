@@ -28,8 +28,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-if sys.stdout is None:  # сборка без консоли (.exe / .app): print() не должен падать
-    sys.stdout = sys.stderr = open(os.devnull, "w")
+for _name in ("stdout", "stderr"):  # без консоли (.exe/.app) потока нет; на Windows кодировка не знает кириллицу
+    _stream = getattr(sys, _name)
+    if _stream is None:
+        setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
+    else:
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 FROZEN = getattr(sys, "frozen", False)
 
