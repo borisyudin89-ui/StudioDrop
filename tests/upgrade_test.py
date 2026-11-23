@@ -17,10 +17,14 @@ env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), APPDATA=str(home /
 
 
 def ping():
-    try:
-        return json.loads(urllib.request.urlopen("http://127.0.0.1:8765/o/ping", timeout=1).read())
-    except Exception:
-        return None
+    for port in range(8765, 8785):
+        try:
+            m = json.loads(urllib.request.urlopen("http://127.0.0.1:%d/o/ping" % port, timeout=1).read())
+            if m.get("app") == "studiodrop":
+                return m
+        except Exception:
+            continue
+    return None
 
 
 def wait(fn, t=40):
