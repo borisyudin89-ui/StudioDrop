@@ -28,6 +28,8 @@ jobs:
         with: { python-version: '3.12' }
       - name: Сквозной тест (две копии, передача файлов)
         run: python tests/smoke.py python studiodrop.py
+      - name: Новая версия заменяет старую в фоне
+        run: python tests/upgrade_test.py python studiodrop.py
       - name: Окно (собственное, не браузер)
         if: runner.os != 'Linux'
         run: |
@@ -38,28 +40,60 @@ jobs:
   windows:
     needs: source-tests
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      - name: Номер сборки в программу
+        shell: python
+        run: |
+          import re
+          s = open("studiodrop.py", encoding="utf-8").read()
+          s = s.replace('BUILD = "dev"', 'BUILD = "build-${{ github.run_number }}"', 1)
+          open("studiodrop.py", "w", encoding="utf-8").write(s)
       - run: pip install pyinstaller pywebview
-      - run: pyinstaller --noconfirm --onefile --noconsole --name StudioDrop --icon icon.ico --collect-all webview --collect-all pythonnet --collect-all clr_loader studiodrop.py
-      - name: Тест готового StudioDrop.exe
-        run: python tests/smoke.py dist/StudioDrop.exe
-      - name: Окно готового StudioDrop.exe
-        run: python tests/window_test.py dist/StudioDrop.exe
-      - name: Тест exe из папки с кириллицей и пробелом
+      - run: pyinstaller --noconfirm --onedir --noconsole --name StudioDrop --icon icon.ico --collect-all webview --collect-all pythonnet --collect-all clr_loader studiodrop.py
+      - name: Тест собранной программы
+        run: |
+          python tests/smoke.py dist/StudioDrop/StudioDrop.exe
+          python tests/window_test.py dist/StudioDrop/StudioDrop.exe
+          python tests/upgrade_test.py dist/StudioDrop/StudioDrop.exe
+      - name: Собрать установщик
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force "dist\Мои программы" | Out-Null
-          Copy-Item dist\StudioDrop.exe "dist\Мои программы\StudioDrop.exe"
-          python tests/smoke.py "dist\Мои программы\StudioDrop.exe"
-          python tests/window_test.py "dist\Мои программы\StudioDrop.exe"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe).Source }
+          & $iscc "/DAppVersion=build-${{ github.run_number }}" installer.iss
+          if (-not (Test-Path installer_out\StudioDrop-Setup.exe)) { throw "установщик не собрался" }
+      - name: Установить установщиком (тихо, в папку с кириллицей) и проверить
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "Мои программы\StudioDrop"
+          $p = Start-Process installer_out\StudioDrop-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "установщик вернул $($p.ExitCode)" }
+          if (-not (Test-Path "$dir\StudioDrop.exe")) { throw "StudioDrop.exe не установлен" }
+          $lnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\StudioDrop.lnk"
+          if (-not (Test-Path $lnk)) { throw "нет ярлыка в меню Пуск" }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "StudioDrop.lnk"))) { throw "нет ярлыка на рабочем столе" }
+          "installed=$dir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Тест УСТАНОВЛЕННОЙ программы
+        run: |
+          python tests/smoke.py "${{ env.installed }}\StudioDrop.exe"
+          python tests/window_test.py "${{ env.installed }}\StudioDrop.exe"
+          python tests/upgrade_test.py "${{ env.installed }}\StudioDrop.exe"
+      - name: Удаление программы
+        shell: pwsh
+        run: |
+          $u = Join-Path $env:installed "unins000.exe"
+          $p = Start-Process $u -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Start-Sleep 3
+          if (Test-Path (Join-Path $env:installed "StudioDrop.exe")) { throw "программа не удалилась" }
       - uses: actions/upload-artifact@v4
         with:
           name: StudioDrop-Windows
-          path: dist/StudioDrop.exe
+          path: installer_out/StudioDrop-Setup.exe
 
   # 3) Mac: по сборке на каждую архитектуру; проверяем .app и .app внутри .dmg
   mac:
@@ -76,6 +110,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      - name: Номер сборки в программу
+        shell: python
+        run: |
+          import re
+          s = open("studiodrop.py", encoding="utf-8").read()
+          s = s.replace('BUILD = "dev"', 'BUILD = "build-${{ github.run_number }}"', 1)
+          open("studiodrop.py", "w", encoding="utf-8").write(s)
       - run: pip install pyinstaller pywebview
       - run: pyinstaller --noconfirm --windowed --name StudioDrop --icon icon.icns --osx-bundle-identifier com.studiodrop.app --collect-all webview studiodrop.py
       - name: Подпись для себя и проверка архитектуры
@@ -87,6 +128,7 @@ jobs:
         run: |
           python tests/smoke.py dist/StudioDrop.app/Contents/MacOS/StudioDrop
           python tests/window_test.py dist/StudioDrop.app/Contents/MacOS/StudioDrop
+          python tests/upgrade_test.py dist/StudioDrop.app/Contents/MacOS/StudioDrop
       - name: Собрать .dmg
         run: |
           mkdir dmgroot

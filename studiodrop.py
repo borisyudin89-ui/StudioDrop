@@ -40,6 +40,8 @@ for _name in ("stdout", "stderr"):  # без консоли (.exe/.app) пото
             pass
 
 FROZEN = getattr(sys, "frozen", False)
+BUILD = "dev"  # CI подставляет номер сборки
+VERSION = os.environ.get("STUDIODROP_FAKE_VERSION") or BUILD
 
 # ───────────────────────────── QR-код (без библиотек) ─────────────────────────────
 
@@ -586,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
             parts = path.split("/")  # ['', 'o', 'pull', oid, i]
             act = parts[2] if len(parts) > 2 else ""
             if self.command == "GET" and act == "ping":
-                return self.send_json({"app": "studiodrop"})
+                return self.send_json({"app": "studiodrop", "ver": VERSION})
             if self.command == "GET" and act == "pull" and len(parts) == 5:
                 return self.pull(parts[3], parts[4])
             if self.command == "POST" and act == "offer":
@@ -1522,16 +1524,40 @@ def window_selftest(window):
         window.destroy()
 
 
+def ping(port):
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/o/ping" % port, timeout=0.5) as r:
+            m = json.loads(r.read())
+            return m if m.get("app") == "studiodrop" else None
+    except Exception:
+        return None
+
+
 def find_running():
     """Ищет уже запущенный StudioDrop на этом ПК. Возвращает порт или None."""
     for port in range(8765, 8785):
-        try:
-            with urllib.request.urlopen("http://127.0.0.1:%d/o/ping" % port, timeout=0.5) as r:
-                if json.loads(r.read()).get("app") == "studiodrop":
-                    return port
-        except Exception:
-            continue
+        if ping(port):
+            return port
     return None
+
+
+def stop_old():
+    """Если в фоне ещё работает СТАРАЯ версия — останавливает её, чтобы открылась новая."""
+    for _ in range(6):
+        port = find_running()
+        if port is None:
+            return
+        if ping(port).get("ver") == VERSION:
+            return
+        try:
+            tok = (Path.home() / "StudioDrop" / ".studiodrop_token").read_text().strip()
+            urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:%d/%s/quit" % (port, tok), data=b"{}", method="POST"), timeout=3).read()
+        except Exception:
+            return
+        for _ in range(30):
+            time.sleep(0.2)
+            if ping(port) is None:
+                break
 
 
 def cmd_send(paths):
@@ -1539,6 +1565,7 @@ def cmd_send(paths):
     paths = [os.path.abspath(p) for p in paths if os.path.isfile(p)]
     if not paths:
         return
+    stop_old()
     port = find_running()
     if port is None:
         spawn_self("--background")
@@ -1568,6 +1595,7 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "send":
         return cmd_send(sys.argv[2:])
     if len(sys.argv) > 1 and sys.argv[1] == "open":
+        stop_old()
         port = find_running()
         if port:
             tok = (Path.home() / "StudioDrop" / ".studiodrop_token").read_text().strip()
@@ -1577,6 +1605,8 @@ def main():
         integration_set(sys.argv[1] == "install")
         msgbox("Готово. Пункт «Отправить → StudioDrop» и автозапуск %s." % ("включены" if sys.argv[1] == "install" else "выключены"))
         return
+    if "--force" not in sys.argv:
+        stop_old()
     if find_running() and "--force" not in sys.argv:
         # уже запущен: просто показываем окно
         port = find_running()
@@ -1606,6 +1636,8 @@ def main():
     if FROZEN and IS_WIN and not marker.exists():  # первый запуск .exe: включаем меню и автозапуск
         integration_set(True)
         marker.write_text("1")
+    if FROZEN and IS_WIN and integration_on():  # после переезда/обновления пути в меню должны вести на эту копию
+        integration_set(True)
     NO_BROWSER[0] = args.no_browser
     for p in FOLDER.glob("*.part"):  # хвосты от прерванных передач
         try:
