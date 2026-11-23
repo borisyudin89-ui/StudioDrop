@@ -94,6 +94,12 @@ jobs:
         with:
           name: StudioDrop-Windows
           path: installer_out/StudioDrop-Setup.exe
+      - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: StudioDrop (сборка ${{ github.run_number }})
+          files: installer_out/StudioDrop-Setup.exe
 
   # 3) Mac: по сборке на каждую архитектуру; проверяем .app и .app внутри .dmg
   mac:
@@ -145,17 +151,9 @@ jobs:
         with:
           name: StudioDrop-Mac-${{ matrix.label }}
           path: StudioDrop-${{ matrix.label }}.dmg
-
-  # 4) Публикация на странице Releases (после успешных тестов всех систем)
-  release:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { path: out, merge-multiple: true }
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
+          tag_name: build-${{ github.run_number }}
           name: StudioDrop (сборка ${{ github.run_number }})
-          files: out/*
+          files: StudioDrop-${{ matrix.label }}.dmg
