@@ -71,7 +71,7 @@ jobs:
         shell: pwsh
         run: |
           $dir = Join-Path $env:RUNNER_TEMP "Мои программы\StudioDrop"
-          $p = Start-Process installer_out\StudioDrop-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dir" -Wait -PassThru
+          $p = Start-Process installer_out\StudioDrop-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","`"/DIR=$dir`"" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "установщик вернул $($p.ExitCode)" }
           if (-not (Test-Path "$dir\StudioDrop.exe")) { throw "StudioDrop.exe не установлен" }
           $lnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\StudioDrop.lnk"
