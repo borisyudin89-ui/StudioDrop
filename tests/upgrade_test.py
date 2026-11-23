@@ -38,11 +38,14 @@ def wait(fn, t=40):
 
 
 ok = True
+olog = open(root / "old.log", "wb")
 old = subprocess.Popen(CMD + ["--no-browser", "--force"], env=dict(env, STUDIODROP_FAKE_VERSION="old-1"),
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=olog, stderr=olog, stdin=subprocess.DEVNULL)
 p = wait(ping)
 print(("PASS  " if p and p.get("ver") == "old-1" else "FAIL  ") + "старая версия запущена: %s" % p)
 ok &= bool(p and p.get("ver") == "old-1")
+if not p:
+    olog.flush(); print("--- лог старой версии (код %s) ---" % old.poll()); print((root / "old.log").read_text(errors="replace")[-2500:])
 new = subprocess.Popen(CMD + ["--no-browser"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 p = wait(lambda: (lambda x: x if x and x.get("ver") != "old-1" else None)(ping()))
 print(("PASS  " if p else "FAIL  ") + "новая версия заняла место старой: %s" % p)
