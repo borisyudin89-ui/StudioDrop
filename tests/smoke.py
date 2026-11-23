@@ -7,7 +7,7 @@
 Поднимает ДВЕ копии программы (как два ПК) и проверяет всё по-настоящему.
 Код возврата 0 — всё прошло, иначе 1.
 """
-import hashlib, json, os, shutil, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import hashlib, json, os, shutil, socket, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 for _st in (sys.stdout, sys.stderr):  # консоль Windows по умолчанию не умеет русские буквы
@@ -23,6 +23,7 @@ results = []
 
 
 def check(name, ok, extra=""):
+    ok = bool(ok)
     results.append(ok)
     print(("PASS  " if ok else "FAIL  ") + name + (("  -> " + str(extra)) if (extra and not ok) else ""), flush=True)
     return ok
@@ -244,7 +245,12 @@ def main():
             files = jget(A.base + "/api/stage?sid=" + sid).get("files", [])
             check(label + ": файл попал в список отправки", [f["name"] for f in files] == [small.name], files)
             st, body, _ = http("GET", ok)
-            check("страница выбора устройства открывается", st == 200 and "Устройства рядом".encode() in body)
+            check("окно с выбранными файлами открывается", st == 200 and b'id="zone"' in body and b"sid=" in ok.encode())
+            st, png, _ = http("GET", ok.split("?")[0] + "icon.png")
+            check("иконка отдаётся", st == 200 and png[:4] == b"\x89PNG")
+            r = jpost(A.base + "/unstage?sid=" + sid + "&name=" + urllib.parse.quote(small.name), {})
+            left = jget(A.base + "/api/stage?sid=" + sid).get("files", [])
+            check("файл можно убрать из списка отправки", r.get("ok") and left == [], left)
         if IS_WIN:
             check("без чёрного окна: нет падений print()", A.proc.poll() is None)
     finally:

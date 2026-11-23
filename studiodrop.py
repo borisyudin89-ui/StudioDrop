@@ -10,6 +10,7 @@ StudioDrop — обмен файлами и текстом между устро
 Полученные файлы лежат в папке  ~/StudioDrop  (Загрузки не трогаем).
 """
 import argparse
+import base64
 import hmac
 import json
 import mimetypes
@@ -654,7 +655,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             rest, q = r
             if rest == "":
-                return self.send_bytes(200, PAGE.encode(), "text/html; charset=utf-8")
+                return self.send_bytes(200, (PAGE_WIN if self.is_local() else PAGE).encode(), "text/html; charset=utf-8")
+            if rest == "icon.png":
+                return self.send_bytes(200, base64.b64decode(ICON_B64), "image/png")
             if rest == "api/info":
                 return self.send_json({
                     "url": lan_url(), "folder": str(FOLDER),
@@ -799,6 +802,20 @@ class Handler(BaseHTTPRequestHandler):
                 sid = secrets.token_hex(4)
                 STAGES[sid] = paths
                 return self.send_json({"ok": True, "sid": sid})
+            if rest == "unstage":
+                if not self.is_local():
+                    return self.send_bytes(403, b"forbidden")
+                sid = (q.get("sid") or [""])[0]
+                name = (q.get("name") or [""])[0]
+                for p in list(STAGES.get(sid, [])):
+                    if p.name == name:
+                        STAGES[sid].remove(p)
+                        if OUT in p.parents:
+                            try:
+                                p.unlink()
+                            except OSError:
+                                pass
+                return self.send_json({"ok": True})
             if rest == "send":
                 m = json.loads(self.read_body() or b"{}")
                 try:
@@ -852,6 +869,287 @@ class Handler(BaseHTTPRequestHandler):
 
 # ───────────────────────────── страница ─────────────────────────────
 
+ICON_B64 = "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"
+
+PAGE_WIN = r"""<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StudioDrop</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none}
+html,body{height:100%}
+body{margin:0;font-family:Inter,-apple-system,'Segoe UI',system-ui,sans-serif;color:#F4F5F8;background:linear-gradient(165deg,#2C3039 0%,#171A1F 55%,#101215 100%);overflow:hidden}
+.win{position:relative;height:100%;display:flex;flex-direction:column;padding:0 24px 26px}
+.top{display:flex;align-items:center;justify-content:space-between;height:64px;flex:none;padding:0 0 0 0}
+.top img{width:34px;height:34px;display:block;margin-left:-2px}
+.tools{display:flex;gap:6px;position:relative}
+.ib{width:40px;height:40px;border-radius:12px;border:0;background:transparent;color:#B7BDC9;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ib:hover{background:rgba(255,255,255,.08);color:#fff}
+.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pop{position:absolute;right:0;top:46px;width:250px;padding:8px;border-radius:18px;background:#21252C;border:1px solid rgba(255,255,255,.10);box-shadow:0 20px 50px rgba(0,0,0,.55);z-index:5}
+.pop[hidden]{display:none}
+.pop button,.pop label{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:0;border-radius:12px;background:none;color:#E9ECF2;font:500 14px Inter,system-ui,sans-serif;cursor:pointer;text-align:left}
+.pop button:hover,.pop label:hover{background:rgba(255,255,255,.07)}
+.pop .q{color:#FF8A80}
+.pop input{width:18px;height:18px;accent-color:#fff}
+.zone{flex:1;min-height:220px;border-radius:28px;border:2px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.035);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;overflow:hidden}
+.zone.over{border-color:#fff;background:rgba(255,255,255,.10)}
+.zone.has{border-style:solid;border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.05);justify-content:flex-start;padding:14px;cursor:default}
+.arrow{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.arrow svg{width:44px;height:44px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.files{width:100%;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:0}
+.file{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.06);flex:none}
+.fi{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;flex:none}
+.fi svg{width:20px;height:20px;stroke:#DDE1E9;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fn{flex:1;min-width:0}
+.fn b{display:block;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn span{display:block;font-size:12px;color:#9AA1AE;margin-top:1px}
+.rm{width:28px;height:28px;border-radius:50%;border:0;background:rgba(255,255,255,.07);color:#CBD0DA;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+.rm:hover{background:rgba(255,255,255,.16)}
+.rm svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round}
+.more{width:100%;flex:none;display:flex;align-items:center;justify-content:center;padding-top:8px;cursor:pointer}
+.more .a2{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.more svg{width:18px;height:18px;stroke:#CBD0DA;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.send{flex:none;margin-top:16px;height:56px;border-radius:28px;border:0;font:600 17px Inter,system-ui,sans-serif;color:#14161A;background:linear-gradient(180deg,#FFFFFF,#C9CED8);box-shadow:0 8px 24px rgba(0,0,0,.35),inset 0 1px 0 #fff;cursor:pointer}
+.send:disabled{opacity:.28;box-shadow:none;cursor:default}
+.qr{flex:none;margin-top:22px;display:flex;justify-content:center}
+.qrt{width:132px;height:132px;border-radius:24px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.qrt img{width:108px;height:108px;display:block}
+.dim{position:absolute;inset:0;background:rgba(8,9,11,.58);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:10}
+.dim[hidden]{display:none}
+.sheet{width:348px;max-width:calc(100% - 32px);border-radius:30px;background:#21252C;border:1px solid rgba(255,255,255,.10);box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.08);padding:20px 20px 24px}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.sh .t{font-weight:600;font-size:15px;color:#E9ECF2}
+.sh .x{width:32px;height:32px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:#CBD0DA;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sh .x svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
+.devs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 8px;min-height:96px}
+.dev{display:flex;flex-direction:column;align-items:center;gap:9px;background:none;border:0;color:#F4F5F8;font:500 13px/1.25 Inter,system-ui,sans-serif;text-align:center;cursor:pointer;min-width:0}
+.dev span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{position:relative;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.av svg.g{width:32px;height:32px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.av svg.ring{position:absolute;inset:-5px;width:82px;height:82px;transform:rotate(-90deg);fill:none}
+.av svg.ring.spin{animation:sp 1.1s linear infinite}
+@keyframes sp{to{transform:rotate(270deg)}}
+.dev:hover .av{background:rgba(255,255,255,.14)}
+.dev.off{opacity:.35;pointer-events:none}
+.pct{position:absolute;font:600 14px Inter,system-ui,sans-serif;color:#fff}
+.empty{grid-column:1/-1;text-align:center;color:#9AA1AE;font-size:14px;line-height:1.5;padding:14px 8px}
+.inc{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:6px}
+.inc .nm{font-weight:600;font-size:17px;margin-top:14px}
+.inc .sub{font-size:13px;color:#9AA1AE;margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.btns{display:flex;gap:10px;width:100%;margin-top:22px}
+.btns button{flex:1;height:48px;border-radius:24px;font:600 15px Inter,system-ui,sans-serif;cursor:pointer}
+.btns .no{background:rgba(255,255,255,.08);color:#E9ECF2;border:0}
+.btns .ok{background:linear-gradient(180deg,#fff,#C9CED8);color:#14161A;border:0}
+.toast{position:absolute;left:24px;right:24px;bottom:12px;padding:10px 14px;border-radius:14px;background:#3A2326;color:#FFB4AB;font-size:13px;text-align:center;z-index:20}
+.toast[hidden]{display:none}
+</style></head><body>
+<div class="win" id="win">
+  <div class="top">
+    <img id="logo" alt="StudioDrop">
+    <div class="tools">
+      <button class="ib" id="openf" aria-label="Открыть папку с файлами" title="Папка с полученными файлами"><svg aria-hidden="true" viewBox="0 0 24 24" class="ico"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+      <button class="ib" id="gear" aria-label="Настройки"><svg aria-hidden="true" viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+      <div class="pop" id="pop" hidden>
+        <label id="integw" hidden><input type="checkbox" id="integ"> Автозапуск и меню «Отправить»</label>
+        <button class="q" id="quit">Выйти из StudioDrop</button>
+      </div>
+    </div>
+  </div>
+  <div class="zone" id="zone" tabindex="0" role="button" aria-label="Перетащите файлы сюда или нажмите, чтобы выбрать"></div>
+  <input type="file" id="file" multiple hidden>
+  <button class="send" id="send" disabled>Отправить</button>
+  <div class="qr"><div class="qrt"><img id="qr" alt="QR-код для телефона"></div></div>
+  <div class="dim" id="dim" hidden><div class="sheet" id="sheet"></div></div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script>
+const base = location.pathname.replace(/\/$/, '');
+const $ = id => document.getElementById(id);
+const el = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props||{}); kids.forEach(k => e.append(k)); return e; };
+const fmt = n => n < 1024 ? n + ' Б' : n < 1048576 ? (n/1024).toFixed(0) + ' КБ' : n < 1073741824 ? (n/1048576).toFixed(1).replace('.', ',') + ' МБ' : (n/1073741824).toFixed(2).replace('.', ',') + ' ГБ';
+const plural = n => { const a = n % 10, b = n % 100; return n + (a === 1 && b !== 11 ? ' файл' : a >= 2 && a <= 4 && (b < 10 || b >= 20) ? ' файла' : ' файлов'); };
+const NS = 'http://www.w3.org/2000/svg';
+const svg = (inner, cls) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); if (cls) s.setAttribute('class', cls); s.innerHTML = inner; return s; };
+const I = {
+  arrow: '<path d="M12 4v14"/><path d="M6 12l6 6 6-6"/>',
+  wave: '<path d="M4 12v0M8 8v8M12 4v16M16 8v8M20 12v0"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+};
+function toast(t) { const e = $('toast'); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => e.hidden = true, 4000); }
+const post = (u, b) => fetch(base + u, {method:'POST', body: b ? JSON.stringify(b) : undefined});
+
+// ---------- файлы ----------
+let sid = new URLSearchParams(location.search).get('sid') || Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('');
+let files = [], uploading = 0, sending = null;
+async function loadFiles() {
+  try { files = (await (await fetch(base + '/api/stage?sid=' + sid)).json()).files; } catch (e) {}
+  renderZone();
+}
+function renderZone() {
+  const z = $('zone'); z.replaceChildren();
+  z.classList.toggle('has', files.length > 0 || uploading > 0);
+  if (!files.length && !uploading) {
+    z.append(el('div', {className:'arrow'}));
+    z.firstChild.append(svg(I.arrow));
+  } else {
+    const list = el('div', {className:'files'});
+    files.forEach(f => {
+      const rm = el('button', {className:'rm', title:'Убрать', onclick: async e => { e.stopPropagation(); await post('/unstage?sid=' + sid + '&name=' + encodeURIComponent(f.name)); loadFiles(); }}); rm.setAttribute('aria-label', 'Убрать ' + f.name); rm.append(svg(I.x));
+      list.append(el('div', {className:'file'}, el('div', {className:'fi'}, svg(I.wave)), el('div', {className:'fn'}, el('b', {textContent:f.name}), el('span', {textContent:fmt(f.size)})), rm));
+    });
+    if (uploading) list.append(el('div', {className:'file'}, el('div', {className:'fn'}, el('b', {textContent:'Загрузка…'}), el('span', {id:'upst', textContent:''}))));
+    z.append(list);
+    const more = el('div', {className:'more', onclick: () => $('file').click()}, el('div', {className:'a2'}));
+    more.firstChild.append(svg(I.arrow)); z.append(more);
+  }
+  $('send').disabled = !files.length || uploading > 0;
+}
+async function addFiles(list) {
+  const arr = Array.from(list); if (!arr.length) return;
+  uploading += arr.length; renderZone();
+  for (const f of arr) {
+    await new Promise(res => {
+      const x = new XMLHttpRequest();
+      x.open('PUT', base + '/up?sid=' + sid + '&name=' + encodeURIComponent(f.name));
+      x.upload.onprogress = e => { const s = $('upst'); if (s && e.lengthComputable) s.textContent = f.name + ' · ' + (e.loaded / e.total * 100).toFixed(0) + '%'; };
+      x.onloadend = () => { if (x.status !== 200) toast('Не удалось добавить «' + f.name + '»'); res(); };
+      x.send(f);
+    });
+    uploading--;
+    await loadFiles();
+  }
+}
+$('zone').onclick = () => { if (!files.length && !uploading) $('file').click(); };
+$('zone').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
+$('file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); $('zone').classList.add('over'); }));
+['dragleave','drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); $('zone').classList.remove('over'); }));
+window.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+window.addEventListener('paste', e => { if (e.clipboardData && e.clipboardData.files.length) addFiles(e.clipboardData.files); });
+
+// ---------- окошко поверх ----------
+function ring(p, color, spin) {
+  const c = 2 * Math.PI * 38;
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 82 82'); s.setAttribute('class', 'ring' + (spin ? ' spin' : '')); s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = '<circle cx="41" cy="41" r="38" stroke="rgba(255,255,255,.14)" stroke-width="3"/><circle cx="41" cy="41" r="38" stroke="' + color + '" stroke-width="3" stroke-linecap="round" stroke-dasharray="' + (c * p).toFixed(1) + ' ' + c.toFixed(1) + '"/>';
+  return s;
+}
+function avatar(kind, state, pct) {
+  const av = el('div', {className:'av'});
+  if (state === 'wait') av.append(ring(.28, '#fff', true));
+  if (state === 'go') av.append(ring(pct == null ? .28 : pct, '#fff', pct == null));
+  if (state === 'ok') av.append(ring(1, '#5BE3A1'));
+  if (state === 'ok') av.append(svg(I.check, 'g')); else if (state === 'go' && pct != null) av.append(el('span', {className:'pct', textContent: Math.round(pct * 100) + '%'}));
+  else av.append(svg(kind === 'phone' ? I.phone : I.laptop, 'g'));
+  return av;
+}
+function sheet(title, content, onclose) {
+  const sh = $('sheet'); sh.replaceChildren();
+  const x = el('button', {className:'x', onclick: onclose || closeSheet}); x.setAttribute('aria-label', 'Закрыть'); x.append(svg(I.x));
+  sh.append(el('div', {className:'sh'}, el('span', {className:'t', textContent:title}), x), content);
+  $('dim').hidden = false;
+}
+function closeSheet() { $('dim').hidden = true; sending = null; sheetMode = ''; }
+let sheetMode = '', devs = [];
+async function openPicker() { sheetMode = 'pick'; await pollDevices(); }
+async function pollDevices() {
+  try { devs = (await (await fetch(base + '/api/devices')).json()).devices; } catch (e) { return; }
+  if (sheetMode === 'pick') drawPicker();
+}
+function drawPicker() {
+  const box = el('div', {className:'devs'});
+  if (!devs.length) box.append(el('div', {className:'empty', textContent:'Ищем устройства рядом…\nНа другом компьютере откройте StudioDrop, на телефоне — отсканируйте QR.', style:'white-space:pre-line'}));
+  devs.forEach(d => box.append(el('button', {className:'dev', onclick: () => doSend(d)}, avatar(d.kind), el('span', {textContent:d.name}))));
+  sheet(plural(files.length), box);
+}
+async function doSend(dev) {
+  sheetMode = 'send'; sending = {dev, state:'waiting'};
+  drawSending();
+  let r;
+  try { r = await (await post('/send', {sid, to: dev.id})).json(); } catch (e) { r = {ok:false, error:'Нет связи'}; }
+  if (!r.ok) { sending.state = 'error'; sending.err = r.error; drawSending(); return; }
+  sending.oid = r.oid;
+  const my = sending;
+  const t = setInterval(async () => {
+    if (sending !== my) { clearInterval(t); return; }
+    let o; try { o = await (await fetch(base + '/api/offer?oid=' + r.oid)).json(); } catch (e) { return; }
+    if (o.state === 'sending') my.state = 'sending';
+    else if (o.state === 'done') { my.state = 'done'; clearInterval(t); drawSending(); setTimeout(() => { if (sending === my) { closeSheet(); resetFiles(); } }, 1800); return; }
+    else if (o.state === 'declined') { my.state = 'declined'; clearInterval(t); }
+    else if (o.state === 'expired' || o.state === 'unknown') { my.state = 'error'; my.err = 'Нет ответа'; clearInterval(t); }
+    drawSending();
+  }, 800);
+}
+function drawSending() {
+  const s = sending; if (!s) return;
+  const st = s.state;
+  const title = st === 'done' ? 'Отправлено' : st === 'declined' ? 'Отклонено' : st === 'error' ? (s.err || 'Ошибка') : plural(files.length);
+  const box = el('div', {className:'devs'});
+  devs.forEach(d => {
+    const mine = d.id === s.dev.id;
+    const b = el('button', {className:'dev' + (mine ? '' : ' off')}, avatar(d.kind, mine ? (st === 'done' ? 'ok' : (st === 'waiting' ? 'wait' : st === 'sending' ? 'go' : '')) : '', null), el('span', {textContent:d.name}));
+    box.append(b);
+  });
+  if (!devs.some(d => d.id === s.dev.id)) box.prepend(el('button', {className:'dev'}, avatar(s.dev.kind, st === 'done' ? 'ok' : st === 'waiting' ? 'wait' : st === 'sending' ? 'go' : ''), el('span', {textContent:s.dev.name})));
+  if (st === 'waiting') box.append(el('div', {className:'empty', textContent:'Ждём подтверждения…'}));
+  const keep = st === 'done';
+  sheet(title, box, () => { closeSheet(); if (keep) resetFiles(); });
+}
+async function resetFiles() { sid = Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join(''); files = []; renderZone(); }
+$('send').onclick = () => { if (files.length) openPicker(); };
+
+// ---------- входящие ----------
+let lastInc = '', incDone = {};
+async function pollInbox() {
+  let d; try { d = await (await fetch(base + '/api/inbox?me=pc')).json(); } catch (e) { return; }
+  const it = d.items.find(i => !incDone[i.oid]);
+  const sig = JSON.stringify(it || null) + sheetMode; if (sig === lastInc) return; lastInc = sig;
+  if (!it) { if (sheetMode === 'inc') closeSheet(); return; }
+  sheetMode = 'inc';
+  const total = it.files.reduce((a, f) => a + f.size, 0);
+  const sub = (it.files.length > 1 ? plural(it.files.length) : it.files[0].name) + ' · ' + fmt(total);
+  const box = el('div', {className:'inc'});
+  const dis = async () => { incDone[it.oid] = 1; await post('/dismiss?oid=' + it.oid); lastInc = ''; closeSheet(); };
+  if (it.state === 'pending') {
+    box.append(avatar('pc'), el('div', {className:'nm', textContent:it.from}), el('div', {className:'sub', textContent:sub}),
+      el('div', {className:'btns'}, el('button', {className:'no', textContent:'Отклонить', onclick: dis}), el('button', {className:'ok', textContent:'Принять', onclick: async () => { await post('/accept?oid=' + it.oid); lastInc = ''; pollInbox(); }})));
+    sheet('Входящие', box, dis);
+  } else if (it.state === 'receiving') {
+    const p = total ? Math.min(1, it.got / total) : 0;
+    box.append(avatar('pc', 'go', p), el('div', {className:'nm', textContent:it.from}), el('div', {className:'sub', textContent:sub}));
+    sheet('Получение', box, () => {});
+  } else if (it.state === 'done') {
+    box.append(avatar('pc', 'ok'), el('div', {className:'nm', textContent:'Получено'}), el('div', {className:'sub', textContent:'Сохранено в папку StudioDrop'}));
+    sheet('Готово', box, dis); setTimeout(() => { if (sheetMode === 'inc') dis(); }, 2500);
+  } else {
+    box.append(avatar('pc'), el('div', {className:'nm', textContent:'Ошибка'}), el('div', {className:'sub', textContent:it.err || ''}));
+    sheet('Не получилось', box, dis);
+  }
+}
+
+// ---------- настройки ----------
+$('gear').onclick = e => { e.stopPropagation(); $('pop').hidden = !$('pop').hidden; };
+document.addEventListener('click', e => { if (!$('pop').contains(e.target)) $('pop').hidden = true; });
+$('openf').onclick = () => post('/open');
+$('quit').onclick = async () => { await fetch(base + '/quit', {method:'POST'}).catch(() => {}); document.body.innerHTML = '<p style="padding:60px 24px;text-align:center;font:17px sans-serif;color:#9AA1AE">StudioDrop остановлен.<br>Окно можно закрыть.</p>'; };
+async function init() {
+  $('logo').src = base + '/icon.png'; $('qr').src = base + '/qr.svg';
+  renderZone();
+  try {
+    const info = await (await fetch(base + '/api/info')).json();
+    if (info.win) { $('integw').hidden = false; $('integ').checked = info.integ; $('integ').onchange = e => post('/integration?on=' + (e.target.checked ? 1 : 0)); }
+  } catch (e) {}
+  loadFiles(); pollInbox(); setInterval(pollInbox, 1000); setInterval(pollDevices, 1500);
+}
+init();
+</script></body></html>
+"""
+
 PAGE = r"""<!doctype html>
 <html lang="ru"><head>
 <meta charset="utf-8">
@@ -859,7 +1157,7 @@ PAGE = r"""<!doctype html>
 <title>StudioDrop</title>
 <style>
 :root{--bg:#f4f5f7;--card:#fff;--tx:#14161a;--mut:#6b7280;--line:#e5e7eb;--ac:#2563eb;--acx:#fff;--ok:#16a34a;--err:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0e1013;--card:#171a1f;--tx:#eceef2;--mut:#8b93a1;--line:#272c34;--ac:#3b82f6}}
+:root{--bg:#14161a;--card:#21252c;--tx:#f4f5f8;--mut:#9aa1ae;--line:#323843;--ac:#ffffff;--acx:#14161a}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
 .wrap{max-width:720px;margin:0 auto;display:grid;gap:14px}
@@ -894,7 +1192,7 @@ textarea{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px
 .top h2{margin:0}
 </style></head><body>
 <div class="wrap">
-  <h1>📡 StudioDrop <small id="host"></small></h1>
+  <h1>StudioDrop <small id="host"></small></h1>
 
   <div class="card" id="qrcard" hidden>
     <h2>Подключить телефон</h2>
@@ -1102,7 +1400,7 @@ SEND_PAGE = r"""<!doctype html>
 <title>StudioDrop — отправить</title>
 <style>
 :root{--bg:#f4f5f7;--card:#fff;--tx:#14161a;--mut:#6b7280;--line:#e5e7eb;--ac:#2563eb;--ok:#16a34a;--err:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0e1013;--card:#171a1f;--tx:#eceef2;--mut:#8b93a1;--line:#272c34;--ac:#3b82f6}}
+:root{--bg:#14161a;--card:#21252c;--tx:#f4f5f8;--mut:#9aa1ae;--line:#323843;--ac:#ffffff;--ok:#5be3a1;--err:#ff8a80}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;padding:20px 16px}
 .wrap{max-width:560px;margin:0 auto;display:grid;gap:14px}
@@ -1117,7 +1415,7 @@ h1{font-size:22px;margin:4px 0}
 .mut{color:var(--mut)}.status{font-size:17px;padding:6px 0}.ok{color:var(--ok)}.err{color:var(--err)}
 label.add{color:var(--ac);cursor:pointer;display:inline-block;margin-top:8px}
 </style></head><body><div class="wrap">
-<h1>📡 Отправить</h1>
+<h1>Отправить</h1>
 <div class="card"><h2>Файлы</h2><div id="files"><span class="mut">Выберите файлы…</span></div>
 <label class="add" id="addl">+ Добавить файлы<input type="file" id="file" multiple hidden></label><div id="up" class="mut"></div></div>
 <div class="card"><h2>Устройства рядом</h2>
@@ -1199,7 +1497,7 @@ def run_window(url, on_ready=None):
             webview.settings["ALLOW_DOWNLOADS"] = True
         except Exception:
             pass
-        win = webview.create_window("StudioDrop", url, width=520, height=880, min_size=(380, 560))
+        win = webview.create_window("StudioDrop", url, width=420, height=720, min_size=(380, 640))
         if on_ready:
             webview.start(on_ready, win)
         else:
@@ -1255,7 +1553,7 @@ def cmd_send(paths):
     req = urllib.request.Request("http://127.0.0.1:%d/%s/stage" % (port, token),
                                  data=json.dumps({"paths": paths}).encode(), method="POST")
     sid = json.loads(urllib.request.urlopen(req, timeout=5).read())["sid"]
-    url = "http://127.0.0.1:%d/%s/send?sid=%s" % (port, token, sid)
+    url = "http://127.0.0.1:%d/%s/?sid=%s" % (port, token, sid)
     try:
         (Path.home() / "StudioDrop" / ".last_send_url").write_text(url)
     except OSError:
