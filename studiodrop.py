@@ -657,7 +657,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             rest, q = r
             if rest == "":
-                return self.send_bytes(200, (PAGE_WIN if self.is_local() else PAGE).encode(), "text/html; charset=utf-8")
+                return self.send_bytes(200, (PAGE_WIN if self.is_local() and "phone" not in q else PAGE_PHONE).encode(), "text/html; charset=utf-8")
             if rest == "icon.png":
                 return self.send_bytes(200, base64.b64decode(ICON_B64), "image/png")
             if rest == "api/info":
@@ -1160,6 +1160,240 @@ async function init() {
 init();
 </script></body></html>
 """
+
+PAGE_PHONE = r"""<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>StudioDrop</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none}
+html,body{height:100%}
+body{margin:0;font-family:Inter,-apple-system,'Segoe UI',system-ui,sans-serif;color:#F4F5F8;background:linear-gradient(165deg,#2C3039 0%,#171A1F 55%,#101215 100%);overflow:hidden}
+.win{position:relative;height:100%;display:flex;flex-direction:column;padding:0 24px 26px}
+.top{display:flex;align-items:center;justify-content:space-between;height:64px;flex:none;padding:0 0 0 0}
+.top img{width:34px;height:34px;display:block;margin-left:-2px}
+.tools{display:flex;gap:6px;position:relative}
+.ib{width:40px;height:40px;border-radius:12px;border:0;background:transparent;color:#B7BDC9;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ib:hover{background:rgba(255,255,255,.08);color:#fff}
+.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pop{position:absolute;right:0;top:46px;width:250px;padding:8px;border-radius:18px;background:#21252C;border:1px solid rgba(255,255,255,.10);box-shadow:0 20px 50px rgba(0,0,0,.55);z-index:5}
+.pop[hidden]{display:none}
+.pop button,.pop label{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:0;border-radius:12px;background:none;color:#E9ECF2;font:500 14px Inter,system-ui,sans-serif;cursor:pointer;text-align:left}
+.pop button:hover,.pop label:hover{background:rgba(255,255,255,.07)}
+.pop .q{color:#FF8A80}
+.pop input{width:18px;height:18px;accent-color:#fff}
+.zone{flex:1;min-height:220px;border-radius:28px;border:2px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.035);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;overflow:hidden}
+.zone.over{border-color:#fff;background:rgba(255,255,255,.10)}
+.zone.has{border-style:solid;border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.05);justify-content:flex-start;padding:14px;cursor:default}
+.arrow{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.arrow svg{width:44px;height:44px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.files{width:100%;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:0}
+.file{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.06);flex:none}
+.fi{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;flex:none}
+.fi svg{width:20px;height:20px;stroke:#DDE1E9;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fn{flex:1;min-width:0}
+.fn b{display:block;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn span{display:block;font-size:12px;color:#9AA1AE;margin-top:1px}
+.rm{width:28px;height:28px;border-radius:50%;border:0;background:rgba(255,255,255,.07);color:#CBD0DA;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+.rm:hover{background:rgba(255,255,255,.16)}
+.rm svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round}
+.more{width:100%;flex:none;display:flex;align-items:center;justify-content:center;padding-top:8px;cursor:pointer}
+.more .a2{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.more svg{width:18px;height:18px;stroke:#CBD0DA;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.send{flex:none;margin-top:16px;height:56px;border-radius:28px;border:0;font:600 17px Inter,system-ui,sans-serif;color:#14161A;background:linear-gradient(180deg,#FFFFFF,#C9CED8);box-shadow:0 8px 24px rgba(0,0,0,.35),inset 0 1px 0 #fff;cursor:pointer}
+.send:disabled{opacity:.28;box-shadow:none;cursor:default}
+.qr{flex:none;margin-top:22px;display:flex;justify-content:center}
+.qrt{width:132px;height:132px;border-radius:24px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.qrt img{width:108px;height:108px;display:block}
+.dim{position:absolute;inset:0;background:rgba(8,9,11,.58);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:10}
+.dim[hidden]{display:none}
+.sheet{width:348px;max-width:calc(100% - 32px);border-radius:30px;background:#21252C;border:1px solid rgba(255,255,255,.10);box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.08);padding:20px 20px 24px}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.sh .t{font-weight:600;font-size:15px;color:#E9ECF2}
+.sh .x{width:32px;height:32px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:#CBD0DA;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sh .x svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
+.devs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 8px;min-height:96px}
+.dev{display:flex;flex-direction:column;align-items:center;gap:9px;background:none;border:0;color:#F4F5F8;font:500 13px/1.25 Inter,system-ui,sans-serif;text-align:center;cursor:pointer;min-width:0}
+.dev span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{position:relative;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.av svg.g{width:32px;height:32px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.av svg.ring{position:absolute;inset:-5px;width:82px;height:82px;transform:rotate(-90deg);fill:none}
+.av svg.ring.spin{animation:sp 1.1s linear infinite}
+@keyframes sp{to{transform:rotate(270deg)}}
+.dev:hover .av{background:rgba(255,255,255,.14)}
+.dev.off{opacity:.35;pointer-events:none}
+.pct{position:absolute;font:600 14px Inter,system-ui,sans-serif;color:#fff}
+.empty{grid-column:1/-1;text-align:center;color:#9AA1AE;font-size:14px;line-height:1.5;padding:14px 8px}
+.inc{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:6px}
+.inc .nm{font-weight:600;font-size:17px;margin-top:14px}
+.inc .sub{font-size:13px;color:#9AA1AE;margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.btns{display:flex;gap:10px;width:100%;margin-top:22px}
+.btns button{flex:1;height:48px;border-radius:24px;font:600 15px Inter,system-ui,sans-serif;cursor:pointer}
+.btns .no{background:rgba(255,255,255,.08);color:#E9ECF2;border:0}
+.btns .ok{background:linear-gradient(180deg,#fff,#C9CED8);color:#14161A;border:0}
+.toast{position:absolute;left:24px;right:24px;bottom:12px;padding:10px 14px;border-radius:14px;background:#3A2326;color:#FFB4AB;font-size:13px;text-align:center;z-index:20}
+.toast[hidden]{display:none}
+
+.win{padding-top:max(0px,env(safe-area-inset-top));padding-bottom:max(26px,env(safe-area-inset-bottom))}
+.host{font-size:13px;color:#9AA1AE;margin-left:10px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.left{display:flex;align-items:center;min-width:0;flex:1}
+.lnk{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 20px;border-radius:22px;background:linear-gradient(180deg,#fff,#C9CED8);color:#14161A;font:600 15px Inter,system-ui,sans-serif;text-decoration:none;margin:4px 6px 0 0}
+.zone{min-height:200px}
+html,body{height:100%;overscroll-behavior:none}
+.win{height:100dvh}
+</style></head>
+<body>
+<div class="win" id="win">
+  <div class="top">
+    <div class="left"><img id="logo" alt="StudioDrop"><span class="host" id="host"></span></div>
+  </div>
+  <div class="zone" id="zone" tabindex="0" role="button" aria-label="Нажмите, чтобы выбрать фото, видео или файлы"></div>
+  <input type="file" id="file" multiple hidden>
+  <button class="send" id="send" disabled>Отправить</button>
+  <div class="dim" id="dim" hidden><div class="sheet" id="sheet"></div></div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script>
+const base = location.pathname.replace(/\/$/, '');
+const $ = id => document.getElementById(id);
+const el = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props||{}); kids.forEach(k => e.append(k)); return e; };
+const fmt = n => n < 1024 ? n + ' Б' : n < 1048576 ? (n/1024).toFixed(0) + ' КБ' : n < 1073741824 ? (n/1048576).toFixed(1).replace('.', ',') + ' МБ' : (n/1073741824).toFixed(2).replace('.', ',') + ' ГБ';
+const plural = n => { const a = n % 10, b = n % 100; return n + (a === 1 && b !== 11 ? ' файл' : a >= 2 && a <= 4 && (b < 10 || b >= 20) ? ' файла' : ' файлов'); };
+const NS = 'http://www.w3.org/2000/svg';
+const svg = (inner, cls) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); if (cls) s.setAttribute('class', cls); s.innerHTML = inner; return s; };
+const I = {
+  arrow: '<path d="M12 4v14"/><path d="M6 12l6 6 6-6"/>',
+  wave: '<path d="M4 12v0M8 8v8M12 4v16M16 8v8M20 12v0"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+};
+function toast(t) { const e = $('toast'); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => e.hidden = true, 4000); }
+const post = (u, b) => fetch(base + u, {method:'POST', body: b ? JSON.stringify(b) : undefined});
+const devId = (() => { try { let v = localStorage.getItem('as_id'); if (!v) { v = Math.random().toString(16).slice(2, 10); localStorage.setItem('as_id', v); } return v; } catch (e) { return Math.random().toString(16).slice(2, 10); } })();
+const devName = () => { const u = navigator.userAgent; return /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Mac/.test(u) ? 'Mac (браузер)' : /Windows/.test(u) ? 'ПК (браузер)' : 'Устройство'; };
+let hostName = 'Компьютер';
+
+// ---------- файлы (хранятся на телефоне до выбора получателя) ----------
+let files = [];
+function renderZone() {
+  const z = $('zone'); z.replaceChildren();
+  z.classList.toggle('has', files.length > 0);
+  if (!files.length) {
+    const a = el('div', {className:'arrow'}); a.append(svg(I.arrow)); z.append(a);
+  } else {
+    const list = el('div', {className:'files'});
+    files.forEach((f, i) => {
+      const rm = el('button', {className:'rm', onclick: e => { e.stopPropagation(); files.splice(i, 1); renderZone(); }}); rm.setAttribute('aria-label', 'Убрать ' + f.name); rm.append(svg(I.x));
+      list.append(el('div', {className:'file'}, el('div', {className:'fi'}, svg(I.wave)), el('div', {className:'fn'}, el('b', {textContent:f.name}), el('span', {textContent:fmt(f.size)})), rm));
+    });
+    z.append(list);
+    const more = el('div', {className:'more', onclick: () => $('file').click()}, el('div', {className:'a2'})); more.firstChild.append(svg(I.arrow)); z.append(more);
+  }
+  $('send').disabled = !files.length;
+}
+$('zone').onclick = () => { if (!files.length) $('file').click(); };
+$('file').onchange = e => { files = files.concat(Array.from(e.target.files)); e.target.value = ''; renderZone(); };
+
+// ---------- окошко ----------
+function ring(p, color, spin) {
+  const c = 2 * Math.PI * 38;
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 82 82'); s.setAttribute('class', 'ring' + (spin ? ' spin' : '')); s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = '<circle cx="41" cy="41" r="38" stroke="rgba(255,255,255,.14)" stroke-width="3"/><circle cx="41" cy="41" r="38" stroke="' + color + '" stroke-width="3" stroke-linecap="round" stroke-dasharray="' + (c * p).toFixed(1) + ' ' + c.toFixed(1) + '"/>';
+  return s;
+}
+function avatar(kind, state, pct) {
+  const av = el('div', {className:'av'});
+  if (state === 'wait') av.append(ring(.28, '#fff', true));
+  if (state === 'go') av.append(ring(pct == null ? .28 : pct, '#fff', pct == null));
+  if (state === 'ok') av.append(ring(1, '#5BE3A1'));
+  if (state === 'ok') av.append(svg(I.check, 'g')); else if (state === 'go' && pct != null) av.append(el('span', {className:'pct', textContent: Math.round(pct * 100) + '%'}));
+  else av.append(svg(kind === 'phone' ? I.phone : I.laptop, 'g'));
+  return av;
+}
+let mode = '', devs = [], busy = false;
+function sheet(title, content, onclose) {
+  const sh = $('sheet'); sh.replaceChildren();
+  const x = el('button', {className:'x', onclick: onclose || closeSheet}); x.setAttribute('aria-label', 'Закрыть'); x.append(svg(I.x));
+  sh.append(el('div', {className:'sh'}, el('span', {className:'t', textContent:title}), x), content);
+  $('dim').hidden = false;
+}
+function closeSheet() { $('dim').hidden = true; mode = ''; busy = false; }
+async function pollDevices() {
+  try { devs = (await (await fetch(base + '/api/devices')).json()).devices.filter(d => d.id !== devId); } catch (e) { return; }
+  if (mode === 'pick') drawPicker();
+}
+function drawPicker() {
+  const box = el('div', {className:'devs'});
+  box.append(el('button', {className:'dev', onclick: () => doSend({id:'__host', name:hostName, kind:'pc'})}, avatar('pc'), el('span', {textContent:hostName})));
+  devs.forEach(d => box.append(el('button', {className:'dev', onclick: () => doSend(d)}, avatar(d.kind), el('span', {textContent:d.name}))));
+  sheet(plural(files.length), box);
+}
+function upload(f, url, onp) {
+  return new Promise(res => {
+    const x = new XMLHttpRequest(); x.open('PUT', url);
+    x.upload.onprogress = e => { if (e.lengthComputable) onp(e.loaded); };
+    x.onloadend = () => res(x.status === 200); x.send(f);
+  });
+}
+function drawProgress(dev, state, pct, title) {
+  const av = avatar(dev.kind, state, pct);
+  const box = el('div', {className:'devs'}, el('button', {className:'dev'}, av, el('span', {textContent:dev.name})));
+  sheet(title, box, () => { if (state === 'ok' || state === '' ) { closeSheet(); if (state === 'ok') { files = []; renderZone(); } } });
+}
+async function doSend(dev) {
+  if (busy) return; busy = true; mode = 'send';
+  const host = dev.id === '__host';
+  const sid = Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('');
+  const total = files.reduce((a, f) => a + f.size, 0) || 1; let done = 0;
+  drawProgress(dev, 'go', 0, plural(files.length));
+  for (const f of files) {
+    const ok = await upload(f, base + '/up?' + (host ? '' : 'sid=' + sid + '&') + 'name=' + encodeURIComponent(f.name), l => drawProgress(dev, 'go', Math.min(1, (done + l) / total), plural(files.length)));
+    if (!ok) { toast('Не удалось отправить «' + f.name + '»'); mode = ''; busy = false; closeSheet(); return; }
+    done += f.size;
+  }
+  if (host) { drawProgress(dev, 'ok', 1, 'Отправлено'); busy = false; setTimeout(() => { if (mode === 'send') { closeSheet(); files = []; renderZone(); } }, 1600); return; }
+  drawProgress(dev, 'wait', null, 'Ждём подтверждения…');
+  let r; try { r = await (await post('/send', {sid, to: dev.id})).json(); } catch (e) { r = {ok:false, error:'Нет связи'}; }
+  if (!r.ok) { toast(r.error || 'Ошибка'); closeSheet(); return; }
+  const t = setInterval(async () => {
+    let o; try { o = await (await fetch(base + '/api/offer?oid=' + r.oid)).json(); } catch (e) { return; }
+    if (o.state === 'sending') drawProgress(dev, 'go', null, 'Передача…');
+    else if (o.state === 'done') { clearInterval(t); drawProgress(dev, 'ok', 1, 'Отправлено'); busy = false; setTimeout(() => { if (mode === 'send') { closeSheet(); files = []; renderZone(); } }, 1600); }
+    else if (o.state === 'declined') { clearInterval(t); toast('«' + dev.name + '» отклонил'); closeSheet(); }
+    else if (o.state === 'expired' || o.state === 'unknown') { clearInterval(t); toast('Не дождались ответа'); closeSheet(); }
+  }, 900);
+}
+$('send').onclick = () => { if (files.length && !busy) { mode = 'pick'; pollDevices().then(drawPicker); } };
+
+// ---------- входящие ----------
+let lastInc = '', hidden = {};
+async function pollInbox() {
+  let d; try { d = await (await fetch(base + '/api/inbox?me=' + devId)).json(); } catch (e) { return; }
+  const it = d.items.find(i => !hidden[i.oid]);
+  const sig = JSON.stringify(it || null) + mode; if (sig === lastInc) return; lastInc = sig;
+  if (!it) { if (mode === 'inc') closeSheet(); return; }
+  if (mode === 'send') return;
+  mode = 'inc';
+  const hide = async () => { hidden[it.oid] = 1; post('/dismiss?oid=' + it.oid); lastInc = ''; closeSheet(); };
+  const box = el('div', {className:'inc'});
+  box.append(avatar('pc'), el('div', {className:'nm', textContent:it.from}), el('div', {className:'sub', textContent:'отправляет вам'}));
+  const links = el('div', {style:'display:flex;flex-wrap:wrap;justify-content:center;margin-top:16px'});
+  it.files.forEach((f, i) => links.append(el('a', {className:'lnk', href: location.origin + '/o/pull/' + it.oid + '/' + i, textContent:'Скачать ' + (it.files.length > 1 ? f.name : fmt(f.size))})));
+  box.append(links, el('div', {className:'btns'}, el('button', {className:'no', textContent:'Скрыть', onclick: hide})));
+  sheet('Входящие', box, hide);
+}
+async function init() {
+  $('logo').src = base + '/icon.png'; renderZone();
+  try { const info = await (await fetch(base + '/api/info')).json(); hostName = info.host; $('host').textContent = info.host; } catch (e) {}
+  const hello = () => fetch(base + '/hello', {method:'POST', body:JSON.stringify({id:devId, name:devName()})}).catch(() => {});
+  hello(); setInterval(hello, 3000); document.addEventListener('visibilitychange', () => { if (!document.hidden) { hello(); pollDevices(); } });
+  pollInbox(); setInterval(pollInbox, 1200); setInterval(pollDevices, 2000);
+}
+init();
+</script></body></html>"""
 
 PAGE = r"""<!doctype html>
 <html lang="ru"><head>

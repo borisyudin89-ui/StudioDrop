@@ -246,6 +246,8 @@ def main():
             check(label + ": файл попал в список отправки", [f["name"] for f in files] == [small.name], files)
             st, body, _ = http("GET", ok)
             check("окно с выбранными файлами открывается", st == 200 and b'id="zone"' in body and b"sid=" in ok.encode())
+            st, ph, _ = http("GET", ok.split("?")[0] + "?phone=1")
+            check("страница телефона: выбор файлов и получатель-ПК", st == 200 and b'id="host"' in ph and b"__host" in ph)
             st, png, _ = http("GET", ok.split("?")[0] + "icon.png")
             check("иконка отдаётся", st == 200 and png[:4] == b"\x89PNG")
             r = jpost(A.base + "/unstage?sid=" + sid + "&name=" + urllib.parse.quote(small.name), {})
